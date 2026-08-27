@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>沙头街招商引资资源管理平台 v1.7</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet Draw CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet Draw JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <!-- Turf.js 用于可靠的地理面积计算 -->
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #1a5276;
+            --primary-light: #2980b9;
+            --primary-lighter: #d4e6f1;
+            --accent: #c0392b;
+            --accent-light: #e74c3c;
+            --success: #27ae60;
+            --success-light: #d5f5e3;
+            --warning: #f39c12;
+            --warning-light: #fef5e7;
+            --bg: #f0f2f5;
+            --card-bg: #ffffff;
+            --text: #2c3e50;
+            --text-secondary: #5d6d7e;
+            --border: #dce1e8;
+            --shadow: 0 2px 12px rgba(0,0,0,0.08);
+            --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --transition: 0.25s;
+            --font: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:var(--font); background:var(--bg); color:var(--text); line-height:1.6; min-height:100vh; }
+
+        .header { background:linear-gradient(135deg,#1a3c5e 0%,#1a5276 40%,#1f6f8b 100%); color:#fff; padding:0 28px; display:flex; align-items:center; justify-content:space-between; height:60px; box-shadow:0 2px 16px rgba(0,0,0,0.18); position:sticky; top:0; z-index:1000; }
+        .header-left { display:flex; align-items:center; gap:14px; }
+        .header-logo { width:40px; height:40px; background:rgba(255,255,255,0.18); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:22px; }
+        .header-title { font-size:19px; font-weight:700; }
+        .header-subtitle { font-size:12px; opacity:0.85; }
+        .header-right { display:flex; align-items:center; gap:10px; font-size:13px; opacity:0.9; }
+        .header-dot { width:8px; height:8px; background:#5ddea8; border-radius:50%; animation:pulse-dot 2s infinite; }
+        @keyframes pulse-dot { 0%,100%{ box-shadow:0 0 0 0 rgba(93,222,168,0.6); } 50%{ box-shadow:0 0 0 10px rgba(93,222,168,0); } }
+
+        .tab-nav { display:flex; gap:0; background:#fff; margin:16px 20px 0; border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; border:1px solid var(--border); }
+        .tab-btn { flex:1; padding:14px 20px; border:none; background:#fff; cursor:pointer; font-size:14px; font-weight:600; color:var(--text-secondary); transition:var(--transition); font-family:var(--font); display:flex; align-items:center; justify-content:center; gap:8px; white-space:nowrap; }
+        .tab-btn:hover { background:#f8fafb; color:var(--primary); }
+        .tab-btn.active { background:var(--primary); color:#fff; }
+
+        .main-container { padding:16px 20px 20px; max-width:1500px; margin:0 auto; }
+        .tab-content { display:none; animation:fadeSlideIn 0.35s ease; }
+        .tab-content.active { display:block; }
+        @keyframes fadeSlideIn { from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:translateY(0); } }
+
+        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px,1fr)); gap:16px; margin-bottom:20px; }
+        .stat-card { background:var(--card-bg); border-radius:var(--radius); padding:20px 22px; box-shadow:var(--shadow); border:1px solid var(--border); transition:var(--transition); position:relative; overflow:hidden; }
+        .stat-card:hover { box-shadow:var(--shadow-lg); transform:translateY(-2px); }
+        .stat-card .stat-icon { width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:22px; margin-bottom:10px; }
+        .stat-card .stat-value { font-size:32px; font-weight:700; }
+        .stat-card .stat-label { font-size:13px; color:var(--text-secondary); }
+        .stat-accent { position:absolute; top:-20px; right:-20px; width:80px; height:80px; border-radius:50%; opacity:0.06; background:var(--primary); }
+        .icon-blue { background:#d4e6f1; color:#1a5276; } .icon-green { background:#d5f5e3; color:#1e8449; } .icon-orange { background:#fef5e7; color:#b9770e; } .icon-purple { background:#e8daef; color:#6c3483; } .icon-teal { background:#d1f2eb; color:#0e6655; }
+
+        .charts-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+        @media (max-width:900px) { .charts-row { grid-template-columns:1fr; } }
+        .chart-card { background:var(--card-bg); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow); border:1px solid var(--border); }
+        .chart-card h3 { font-size:15px; font-weight:700; margin-bottom:14px; }
+        .chart-wrap { position:relative; height:260px; } .chart-wrap canvas { max-height:260px; }
+
+        .table-card { background:var(--card-bg); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow); border:1px solid var(--border); overflow:hidden; }
+        .table-card h3 { font-size:15px; font-weight:700; margin-bottom:14px; }
+        .table-wrap { overflow-x:auto; max-height:420px; overflow-y:auto; border-radius:var(--radius-sm); border:1px solid var(--border); }
+        table { width:100%; border-collapse:collapse; font-size:13px; min-width:1000px; }
+        table thead th { background:#f4f6f9; color:var(--text); font-weight:700; padding:12px 14px; text-align:left; border-bottom:2px solid #dce1e8; white-space:nowrap; font-size:12px; position:sticky; top:0; z-index:2; }
+        table tbody td { padding:11px 14px; border-bottom:1px solid #eef1f5; white-space:nowrap; }
+        table tbody tr:hover { background:#f8fafc; }
+        .badge { display:inline-block; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:600; }
+        .badge-available { background:#fef5e7; color:#b9770e; } .badge-rented { background:#d5f5e3; color:#1e8449; } .badge-partial { background:#d4e6f1; color:#1a5276; } .badge-construction { background:#eaecee; color:#5d6d7e; }
+        .btn-sm { padding:5px 10px; border-radius:6px; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:11px; font-weight:600; transition:var(--transition); font-family:var(--font); color:var(--primary); display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
+        .btn-sm:hover { background:var(--primary-lighter); border-color:var(--primary-light); }
+        .btn-sm.danger { color:var(--accent); } .btn-sm.danger:hover { background:#fadbd8; border-color:var(--accent-light); }
+        .btn-sm.view { color:#1a5276; border-color:#a2c4dd; } .btn-sm.view:hover { background:#d4e6f1; }
+        .btn-sm.primary-fill { background:var(--primary); color:#fff; border-color:var(--primary); }
+        .btn-sm.primary-fill:hover { background:#14405e; border-color:#14405e; }
+        .btn-sm.accent-fill { background:var(--accent); color:#fff; border-color:var(--accent); }
+        .btn-sm.accent-fill:hover { background:#922b21; border-color:#922b21; }
+
+        .map-page-layout { display:flex; gap:16px; height:calc(100vh - 180px); min-height:600px; }
+        @media (max-width:900px) { .map-page-layout { flex-direction:column; height:auto; } .map-sidebar { max-height:350px; width:100%!important; } .map-area { height:500px!important; } }
+        .map-sidebar { width:350px; min-width:300px; background:var(--card-bg); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; flex-shrink:0; }
+        .map-sidebar-header { padding:14px 16px; border-bottom:1px solid var(--border); font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:space-between; background:#fafbfc; gap:8px; flex-wrap:wrap; }
+        .count-badge { background:var(--primary); color:#fff; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; flex-shrink:0; }
+        .map-sidebar-search { padding:10px 14px; border-bottom:1px solid var(--border); }
+        .map-sidebar-search input { width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:20px; font-size:13px; font-family:var(--font); outline:none; }
+        .map-sidebar-list { flex:1; overflow-y:auto; padding:6px 10px; min-height:0; }
+        .map-sidebar-list .building-item, .map-sidebar-list .plot-item { padding:10px 12px; border-radius:var(--radius-sm); cursor:pointer; transition:var(--transition); border:1px solid transparent; margin-bottom:4px; display:flex; align-items:center; gap:10px; font-size:13px; }
+        .map-sidebar-list .building-item:hover, .map-sidebar-list .plot-item:hover { background:#f4f7fa; border-color:#dce1e8; }
+        .map-sidebar-list .building-item.active, .map-sidebar-list .plot-item.active { background:var(--primary-lighter); border-color:var(--primary-light); font-weight:600; }
+        .type-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+        .item-info { flex:1; min-width:0; } .item-name { font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .item-addr { font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .item-area { font-size:11px; font-weight:600; color:var(--primary); flex-shrink:0; }
+        .item-delete { margin-left:auto; cursor:pointer; color:#c0392b; font-size:14px; opacity:0.7; transition:0.2s; flex-shrink:0; }
+        .item-delete:hover { opacity:1; transform:scale(1.1); }
+        .map-area { flex:1; border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--border); position:relative; overflow:hidden; background:#e8e8e8; min-height:500px; }
+        #map, #map2 { width:100%; height:100%; border-radius:var(--radius); }
+
+        .map-layer-switch { background:white; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,0.15); display:flex; overflow:hidden; border:1px solid #dce1e8; pointer-events:auto; }
+        .map-layer-switch button { padding:8px 16px; border:none; background:white; cursor:pointer; font-size:13px; font-weight:600; font-family:inherit; transition:0.2s; color:#2c3e50; }
+        .map-layer-switch button.active { background:#1a5276; color:white; }
+        .map-layer-switch button:hover { background:#f0f2f5; } .map-layer-switch button.active:hover { background:#14405e; }
+
+        .map-legend { position:absolute; bottom:20px; right:20px; background:#fff; border-radius:var(--radius-sm); padding:12px 14px; box-shadow:var(--shadow-lg); z-index:1000; font-size:11px; border:1px solid var(--border); pointer-events:auto; }
+        .map-legend h4 { font-size:12px; margin-bottom:8px; font-weight:700; }
+        .map-legend .legend-item { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+        .legend-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; border:2px solid rgba(0,0,0,0.15); }
+
+        .draw-toolbar-custom { padding:10px 14px; border-top:1px solid var(--border); background:#fafbfc; display:flex; flex-wrap:wrap; gap:8px; }
+        .draw-toolbar-custom .draw-tool-label { font-size:11px; color:var(--text-secondary); width:100%; margin-bottom:2px; font-weight:600; text-transform:uppercase; }
+        .draw-tool-btn { padding:8px 14px; border-radius:20px; border:2px dashed #a2c4dd; background:#fff; cursor:pointer; font-size:12px; font-weight:600; font-family:var(--font); transition:var(--transition); color:var(--primary); display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+        .draw-tool-btn:hover { background:#d4e6f1; border-color:var(--primary-light); border-style:solid; }
+        .draw-tool-btn.active-tool { background:var(--primary); color:#fff; border-color:var(--primary); border-style:solid; animation:glow-pulse 1.5s infinite; }
+        @keyframes glow-pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(26,82,118,0.4); } 50%{ box-shadow:0 0 0 12px rgba(26,82,118,0); } }
+
+        .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; display:flex; align-items:center; justify-content:center; }
+        .modal { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow-lg); width:520px; max-width:94vw; max-height:85vh; overflow-y:auto; }
+        .modal-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; font-weight:700; background:#fafbfc; position:sticky; top:0; z-index:1; }
+        .modal-close { width:32px; height:32px; border-radius:50%; border:none; background:#eaecee; cursor:pointer; font-size:16px; }
+        .modal-body { padding:20px; }
+        .form-group { margin-bottom:14px; }
+        .form-group label { display:block; font-weight:600; font-size:12px; margin-bottom:5px; color:var(--text-secondary); text-transform:uppercase; }
+        .form-group input, .form-group select, .form-group textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:14px; font-family:var(--font); outline:none; background:#fafbfc; }
+        .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        @media (max-width:500px) { .form-row { grid-template-columns:1fr; } }
+        .modal-footer { padding:14px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:10px; background:#fafbfc; position:sticky; bottom:0; }
+        .btn { padding:10px 20px; border-radius:var(--radius-sm); font-weight:600; cursor:pointer; font-size:13px; font-family:var(--font); border:1px solid transparent; transition:var(--transition); }
+        .btn-primary { background:var(--primary); color:#fff; } .btn-outline { background:#fff; color:var(--text); border-color:var(--border); } .btn-danger { background:#fff; color:var(--accent); border-color:#f5b7b1; }
+        .toast { position:fixed; top:20px; right:20px; z-index:9999; background:#27ae60; color:#fff; padding:12px 20px; border-radius:8px; font-weight:600; box-shadow:var(--shadow-lg); animation:slideInRight 0.3s ease; pointer-events:none; }
+        @keyframes slideInRight { from{ transform:translateX(120%); opacity:0; } to{ transform:translateX(0); opacity:1; } }
+        .key-notice { background:#fffbe6; border:1px solid #f0d87e; border-radius:var(--radius-sm); padding:10px 16px; font-size:12px; color:#7d6608; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+        .key-notice button { margin-left:auto; background:none; border:none; cursor:pointer; font-size:14px; color:#7d6608; font-weight:bold; }
+        .empty-state { text-align:center; padding:30px 20px; color:#999; font-size:13px; }
+
+        .leaflet-draw-toolbar { box-shadow:0 2px 8px rgba(0,0,0,0.2)!important; border-radius:6px!important; }
+        .leaflet-draw-toolbar a { width:34px!important; height:34px!important; line-height:34px!important; }
+    </style>
+</head>
+<body>
+<div class="header">
+    <div class="header-left">
+        <div class="header-logo">🏢</div>
+        <div>
+            <div class="header-title">沙头街招商引资资源管理平台</div>
+            <div class="header-subtitle">广州市番禺区沙头街道办事处 · v1.7</div>
+        </div>
+    </div>
+    <div class="header-right"><div class="header-dot"></div> 数据实时更新</div>
+</div>
+
+<div class="tab-nav">
+    <button class="tab-btn active" data-tab="tab-dashboard">📊 数据汇总</button>
+    <button class="tab-btn" data-tab="tab-map">🏢 存量物业</button>
+    <button class="tab-btn" data-tab="tab-plot">📐 招商地块</button>
+</div>
+
+<div class="main-container">
+    <div class="tab-content active" id="tab-dashboard">
+        <div class="stats-grid" id="statsGrid"></div>
+        <div class="charts-row">
+            <div class="chart-card"><h3>📈 各类型物业面积分布（㎡）</h3><div class="chart-wrap"><canvas id="chartType"></canvas></div></div>
+            <div class="chart-card"><h3>🏘️ 各村/社区物业数量</h3><div class="chart-wrap"><canvas id="chartVillage"></canvas></div></div>
+        </div>
+        <div class="table-card">
+            <h3>📋 招商资源明细表 <span style="font-weight:400;font-size:12px;color:#999;">（最新添加置顶，点击行可定位）</span></h3>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>序号</th><th>建筑名称</th><th>所属村/社区</th><th>地址</th><th>物业类型</th><th>可出租面积(㎡)</th><th>租金(元/㎡/月)</th><th>状态</th><th>联系人</th><th>操作</th></tr></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-content" id="tab-map">
+        <div class="key-notice" id="keyNoticeMap" style="display:none;">⚠️ 请配置天地图Key，当前使用OSM备用底图。<button onclick="this.parentElement.style.display='none'">✕</button></div>
+        <div class="map-page-layout">
+            <div class="map-sidebar">
+                <div class="map-sidebar-header">🏢 建筑列表 <span class="count-badge" id="buildingCount">0</span><button class="btn-sm primary-fill" onclick="addNewBuilding()">+ 新增建筑</button></div>
+                <div class="map-sidebar-search"><input type="text" id="searchBuildingInput" placeholder="🔍 搜索建筑..." oninput="filterBuildingList()"></div>
+                <div class="map-sidebar-list" id="buildingList"></div>
+            </div>
+            <div class="map-area"><div id="map"></div>
+                <div class="map-legend"><h4>📌 图例</h4><div class="legend-item"><span class="legend-dot" style="background:#f39c12;"></span>待出租</div><div class="legend-item"><span class="legend-dot" style="background:#27ae60;"></span>已出租</div><div class="legend-item"><span class="legend-dot" style="background:#2980b9;"></span>部分可租</div><div class="legend-item"><span class="legend-dot" style="background:#95a5a6;"></span>在建/装修</div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-content" id="tab-plot">
+        <div class="key-notice" id="keyNoticePlot" style="display:none;">⚠️ 请配置天地图Key，当前使用OSM备用底图。<button onclick="this.parentElement.style.display='none'">✕</button></div>
+        <div class="map-page-layout">
+            <div class="map-sidebar">
+                <div class="map-sidebar-header">📐 地块列表 <span class="count-badge" id="plotCount">0</span></div>
+                <div class="map-sidebar-search"><input type="text" id="searchPlotInput" placeholder="🔍 搜索地块..." oninput="filterPlotList()"></div>
+                <div class="map-sidebar-list" id="plotList"></div>
+                <div class="draw-toolbar-custom" id="drawToolbarCustom">
+                    <div class="draw-tool-label">🖌️ 绘图工具</div>
+                    <button class="draw-tool-btn" id="btnDrawPolygon" onclick="activateDrawPolygon()" title="点击地图绘制多边形地块">✏️ 绘制多边形地块</button>
+                    <button class="draw-tool-btn" id="btnDrawRectangle" onclick="activateDrawRectangle()" title="点击地图绘制矩形地块">📐 绘制矩形地块</button>
+                    <button class="draw-tool-btn danger" id="btnCancelDraw" onclick="cancelDrawing()" style="display:none;border-color:#f5b7b1;color:#c0392b;">❌ 取消绘制</button>
+                    <button class="draw-tool-btn" id="btnClearAllPlots" onclick="clearAllPlots()" style="border-color:#e0e0e0;color:#888;">🗑️ 清空所有地块</button>
+                </div>
+            </div>
+            <div class="map-area"><div id="map2"></div>
+                <div class="map-legend"><h4>📌 图例</h4><div class="legend-item"><span class="legend-dot" style="background:#f39c12;"></span>待出租地块</div><div class="legend-item"><span class="legend-dot" style="background:#27ae60;"></span>已出租地块</div><div class="legend-item"><span class="legend-dot" style="background:#2980b9;"></span>部分可租地块</div><div class="legend-item"><span class="legend-dot" style="background:#95a5a6;"></span>在建地块</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" style="display:none;">
+    <div class="modal">
+        <div class="modal-header"><span id="modalTitle">编辑</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+        <div class="modal-body" id="modalBody">
+            <input type="hidden" id="editId"><input type="hidden" id="editTypeFlag" value="building">
+            <div class="form-group"><label>名称 *</label><input type="text" id="editName" placeholder="建筑或地块名称"></div>
+            <div class="form-row">
+                <div class="form-group"><label>所属村/社区 *</label><select id="editVillage"></select></div>
+                <div class="form-group"><label>物业类型 *</label><select id="editType"><option value="厂房/工业园">厂房/工业园</option><option value="商铺">商铺</option><option value="办公楼">办公楼</option><option value="仓库">仓库</option><option value="综合楼宇">综合楼宇</option><option value="商业综合体">商业综合体</option><option value="地块">地块</option><option value="其他">其他</option></select></div>
+            </div>
+            <div class="form-group"><label>详细地址 *</label><input type="text" id="editAddress" placeholder="地址"></div>
+            <div class="form-row">
+                <div class="form-group"><label>可出租面积（㎡） *</label><input type="number" id="editArea" step="0.01" value="0"></div>
+                <div class="form-group"><label>租金（元/㎡/月） *</label><input type="number" id="editRent" step="0.5" value="0"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>状态 *</label><select id="editStatus"><option value="待出租">待出租</option><option value="已出租">已出租</option><option value="部分可租">部分可租</option><option value="在建/装修">在建/装修</option></select></div>
+                <div class="form-group"><label>联系人 *</label><input type="text" id="editContact"></div>
+            </div>
+            <div class="form-group"><label>联系电话 *</label><input type="text" id="editPhone"></div>
+            <div class="form-group"><label>备注</label><textarea id="editNote" rows="2"></textarea></div>
+            <div id="coordFields" style="display:none;">
+                <div class="form-group"><label>纬度</label><input type="number" id="editLat" step="0.000001"></div>
+                <div class="form-group"><label>经度</label><input type="number" id="editLng" step="0.000001"></div>
+            </div>
+            <div id="polygonAreaDisplay" style="display:none;font-size:13px;color:#1a5276;background:#d4e6f1;padding:10px 14px;border-radius:8px;margin-bottom:8px;font-weight:600;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-danger" id="btnDelete" style="margin-right:auto; display:none;" onclick="deleteCurrentItem()">🗑 删除</button>
+            <button class="btn btn-outline" id="btnClose" onclick="closeModal()">关闭</button>
+            <button class="btn btn-primary" id="btnSave" onclick="saveItem()">💾 保存</button>
+        </div>
+    </div>
+</div>
+<div id="toastContainer"></div>
+
+<script>
+    (function() {
+        const TIANDITU_KEY = 'd8546483f23a9e3e9ad77c75cf70d507';
+        // ===== Supabase 配置（替换下面的值） =====
+        const SUPABASE_URL = 'https://thjfoskscbnwpefxgbvf.supabase.co';          // 替换
+        const SUPABASE_ANON_KEY = 'sb_publishable_WzQztR-mtIUD3eCSSWaaaA_5OBTcdkx';    // 替换
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); 
+
+        if (typeof L !== 'undefined' && L.drawLocal) {
+            L.drawLocal.draw.toolbar.actions.title = '取消绘制';
+            L.drawLocal.draw.toolbar.actions.text = '取消';
+            L.drawLocal.draw.toolbar.finish.title = '完成绘制';
+            L.drawLocal.draw.toolbar.finish.text = '完成';
+            L.drawLocal.draw.toolbar.undo.title = '删除最后一个点';
+            L.drawLocal.draw.toolbar.undo.text = '撤销';
+            L.drawLocal.draw.toolbar.buttons.polygon = '绘制多边形';
+            L.drawLocal.draw.toolbar.buttons.rectangle = '绘制矩形';
+            L.drawLocal.draw.handlers.polygon.tooltip.start = '点击地图开始绘制地块轮廓';
+            L.drawLocal.draw.handlers.polygon.tooltip.cont = '点击继续绘制轮廓';
+            L.drawLocal.draw.handlers.polygon.tooltip.end = '点击第一个点闭合地块';
+            L.drawLocal.draw.handlers.rectangle.tooltip.start = '点击并拖拽绘制矩形地块';
+            L.drawLocal.edit.toolbar.actions.save.title = '保存更改';
+            L.drawLocal.edit.toolbar.actions.save.text = '保存';
+            L.drawLocal.edit.toolbar.actions.cancel.title = '取消编辑';
+            L.drawLocal.edit.toolbar.actions.cancel.text = '取消';
+            L.drawLocal.edit.toolbar.actions.clearAll.title = '清除所有图层';
+            L.drawLocal.edit.toolbar.actions.clearAll.text = '清除全部';
+            L.drawLocal.edit.toolbar.buttons.edit = '编辑图层';
+            L.drawLocal.edit.toolbar.buttons.editDisabled = '没有可编辑的图层';
+            L.drawLocal.edit.toolbar.buttons.remove = '删除图层';
+            L.drawLocal.edit.toolbar.buttons.removeDisabled = '没有可删除的图层';
+            L.drawLocal.edit.handlers.edit.tooltip.text = '拖动标记或坐标点编辑';
+            L.drawLocal.edit.handlers.edit.tooltip.subtext = '点击取消以撤销更改';
+            L.drawLocal.edit.handlers.remove.tooltip.text = '点击要删除的要素';
+        }
+
+        const VILLAGES_ORDER = ['沙头社区','北海村','大富村','骏兴社区','沙头街','榄山村','大罗村','小罗村','大平村','小平村','汀根村','横江村','莲湖村','南双玉村'];
+
+        const DEFAULT_BUILDINGS = [
+            { id:1, name:'沙头街道办事处', village:'沙头社区', address:'番禺区沙头街捷进西路42号', type:'办公楼', area:0, rent:0, status:'已出租', contact:'—', phone:'—', note:'政府办公大楼', lat:22.9435, lng:113.3428, createdAt:'2024-01-01' },
+            { id:2, name:'大罗塘珠宝小镇1号馆', village:'大罗村', address:'番禺区沙头街大罗塘银平路88号', type:'商业综合体', area:3500, rent:65, status:'部分可租', contact:'陈经理', phone:'13800001111', note:'珠宝集聚区', lat:22.9398, lng:113.3505, createdAt:'2024-01-02' },
+            { id:3, name:'榄山工业园A栋', village:'榄山村', address:'番禺区沙头街榄山工业路12号', type:'厂房/工业园', area:8200, rent:28, status:'待出租', contact:'李生', phone:'13900002222', note:'标准厂房', lat:22.9472, lng:113.3385, createdAt:'2024-01-03' },
+            { id:4, name:'小平村综合楼', village:'小平村', address:'番禺区沙头街小平村中心路20号', type:'综合楼宇', area:1800, rent:35, status:'待出租', contact:'黄小姐', phone:'13600003333', note:'1-3层可租', lat:22.9365, lng:113.3558, createdAt:'2024-01-04' },
+            { id:5, name:'横江村商业广场', village:'横江村', address:'番禺区沙头街横江村商业街1号', type:'商铺', area:1200, rent:55, status:'部分可租', contact:'张先生', phone:'13700004444', lat:22.9508, lng:113.3325, createdAt:'2024-01-05' },
+            { id:6, name:'汀根村仓储中心', village:'汀根村', address:'番禺区沙头街汀根村仓储路8号', type:'仓库', area:5000, rent:18, status:'待出租', contact:'赵经理', phone:'13500005555', lat:22.9555, lng:113.3280, createdAt:'2024-01-06' },
+            { id:7, name:'大平村科技园', village:'大平村', address:'番禺区沙头街大平村科技大道3号', type:'厂房/工业园', area:6200, rent:30, status:'已出租', contact:'周先生', phone:'13300006666', lat:22.9308, lng:113.3525, createdAt:'2024-01-07' },
+            { id:8, name:'小罗村商务大厦', village:'小罗村', address:'番禺区沙头街小罗村商务路15号', type:'办公楼', area:2400, rent:45, status:'部分可租', contact:'吴小姐', phone:'13200007777', lat:22.9372, lng:113.3590, createdAt:'2024-01-08' },
+            { id:9, name:'南双玉村产业楼', village:'南双玉村', address:'番禺区沙头街南双玉村产业路5号', type:'综合楼宇', area:3000, rent:32, status:'在建/装修', contact:'郑先生', phone:'13100008888', lat:22.9588, lng:113.3185, createdAt:'2024-01-09' },
+            { id:10, name:'骏兴社区商业街铺', village:'骏兴社区', address:'番禺区沙头街骏兴社区商业街22号', type:'商铺', area:350, rent:80, status:'待出租', contact:'王小姐', phone:'13000009999', lat:22.9450, lng:113.3455, createdAt:'2024-01-10' },
+            { id:11, name:'沙头街工业厂房B区', village:'沙头街', address:'番禺区沙头街沙头工业路18号', type:'厂房/工业园', area:4500, rent:26, status:'待出租', contact:'刘先生', phone:'13800010001', lat:22.9415, lng:113.3360, createdAt:'2024-01-11' },
+            { id:12, name:'珠宝小镇电商孵化中心', village:'大罗村', address:'番禺区沙头街大罗塘银平路96号', type:'办公楼', area:1600, rent:40, status:'待出租', contact:'林经理', phone:'13700020002', lat:22.9402, lng:113.3518, createdAt:'2024-01-12' },
+            { id:13, name:'北海村综合市场', village:'北海村', address:'番禺区沙头街北海村市场路1号', type:'商铺', area:2100, rent:38, status:'待出租', contact:'何先生', phone:'13600030003', lat:22.9465, lng:113.3400, createdAt:'2024-01-13' },
+            { id:14, name:'大富村工业园', village:'大富村', address:'番禺区沙头街大富村工业路5号', type:'厂房/工业园', area:6800, rent:25, status:'待出租', contact:'梁生', phone:'13900040004', lat:22.9520, lng:113.3300, createdAt:'2024-01-14' },
+            { id:15, name:'莲湖村生态园', village:'莲湖村', address:'番禺区沙头街莲湖村生态路8号', type:'综合楼宇', area:1500, rent:20, status:'在建/装修', contact:'村委会', phone:'020-8466XXXX', lat:22.9540, lng:113.3265, createdAt:'2024-01-15' },
+            { id:16, name:'沙头社区创业大厦', village:'沙头社区', address:'番禺区沙头街捷进中路100号', type:'办公楼', area:2800, rent:45, status:'待出租', contact:'陈小姐', phone:'13900010005', lat:22.9442, lng:113.3435, createdAt:'2024-06-01' },
+            { id:17, name:'榄山村新工业坊', village:'榄山村', address:'番禺区沙头街榄山新路20号', type:'厂房/工业园', area:5600, rent:30, status:'待出租', contact:'张工', phone:'13800010006', lat:22.9480, lng:113.3390, createdAt:'2024-06-02' },
+            { id:18, name:'大罗珠宝设计中心', village:'大罗村', address:'番禺区沙头街银平路120号', type:'办公楼', area:1100, rent:38, status:'待出租', contact:'刘总监', phone:'13700010007', lat:22.9400, lng:113.3520, createdAt:'2024-06-03' },
+            { id:19, name:'小平村商业街B区', village:'小平村', address:'番禺区沙头街小平村商业路18号', type:'商铺', area:800, rent:60, status:'待出租', contact:'何女士', phone:'13600010008', lat:22.9355, lng:113.3545, createdAt:'2024-06-04' },
+            { id:20, name:'横江村物流仓库', village:'横江村', address:'番禺区沙头街横江村物流路6号', type:'仓库', area:4200, rent:22, status:'待出租', contact:'梁先生', phone:'13500010009', lat:22.9515, lng:113.3310, createdAt:'2024-06-05' },
+            { id:21, name:'汀根村综合市场', village:'汀根村', address:'番禺区沙头街汀根村市场路12号', type:'商业综合体', area:3500, rent:42, status:'部分可租', contact:'黄生', phone:'13400010010', lat:22.9560, lng:113.3275, createdAt:'2024-06-06' },
+            { id:22, name:'大平村科创中心', village:'大平村', address:'番禺区沙头街大平村科技路22号', type:'办公楼', area:1800, rent:35, status:'待出租', contact:'吴经理', phone:'13300010011', lat:22.9315, lng:113.3510, createdAt:'2024-06-07' },
+            { id:23, name:'小罗村电商园', village:'小罗村', address:'番禺区沙头街小罗村电商路8号', type:'厂房/工业园', area:3900, rent:28, status:'待出租', contact:'周女士', phone:'13200010012', lat:22.9378, lng:113.3580, createdAt:'2024-06-08' },
+            { id:24, name:'南双玉生态农场', village:'南双玉村', address:'番禺区沙头街南双玉村生态路20号', type:'其他', area:5000, rent:15, status:'待出租', contact:'郑场长', phone:'13100010013', lat:22.9595, lng:113.3175, createdAt:'2024-06-09' },
+            { id:25, name:'骏兴社区商务楼', village:'骏兴社区', address:'番禺区沙头街骏兴路25号', type:'综合楼宇', area:2200, rent:40, status:'待出租', contact:'王先生', phone:'13000010014', lat:22.9458, lng:113.3440, createdAt:'2024-06-10' },
+            { id:26, name:'沙头街创新工场', village:'沙头街', address:'番禺区沙头街沙头工业路30号', type:'厂房/工业园', area:5000, rent:25, status:'待出租', contact:'刘工', phone:'13900010015', lat:22.9420, lng:113.3350, createdAt:'2024-06-11' },
+            { id:27, name:'莲湖村度假村', village:'莲湖村', address:'番禺区沙头街莲湖村度假路1号', type:'商业综合体', area:6000, rent:35, status:'在建/装修', contact:'陈总', phone:'13800010016', lat:22.9535, lng:113.3250, createdAt:'2024-06-12' },
+            { id:28, name:'北海村商住楼', village:'北海村', address:'番禺区沙头街北海大道55号', type:'综合楼宇', area:1800, rent:33, status:'待出租', contact:'李女士', phone:'13700010017', lat:22.9472, lng:113.3395, createdAt:'2024-06-13' },
+            { id:29, name:'大富村机械厂', village:'大富村', address:'番禺区沙头街大富村工业路18号', type:'厂房/工业园', area:7200, rent:20, status:'已出租', contact:'赵厂长', phone:'13600010018', lat:22.9510, lng:113.3290, createdAt:'2024-06-14' },
+            { id:30, name:'沙头社区文化中心', village:'沙头社区', address:'番禺区沙头街文化路3号', type:'其他', area:900, rent:18, status:'待出租', contact:'社区办', phone:'020-84661111', lat:22.9438, lng:113.3420, createdAt:'2024-06-15' },
+            // 新增35个示例 (ID 31-65)
+            { id:31, name:'榄山村青年公寓', village:'榄山村', address:'番禺区沙头街榄山公寓路8号', type:'综合楼宇', area:2400, rent:40, status:'待出租', contact:'叶生', phone:'13500010019', lat:22.9478, lng:113.3380, createdAt:'2024-07-01' },
+            { id:32, name:'大罗村美食广场', village:'大罗村', address:'番禺区沙头街大罗美食街12号', type:'商铺', area:1500, rent:70, status:'待出租', contact:'林女士', phone:'13400010020', lat:22.9395, lng:113.3510, createdAt:'2024-07-02' },
+            { id:33, name:'小平村科技楼', village:'小平村', address:'番禺区沙头街小平村科技路5号', type:'办公楼', area:1600, rent:32, status:'部分可租', contact:'许先生', phone:'13300010021', lat:22.9360, lng:113.3540, createdAt:'2024-07-03' },
+            { id:34, name:'横江村农贸市场', village:'横江村', address:'番禺区沙头街横江村市场路20号', type:'商铺', area:2000, rent:45, status:'待出租', contact:'卢经理', phone:'13200010022', lat:22.9510, lng:113.3315, createdAt:'2024-07-04' },
+            { id:35, name:'汀根村创意园', village:'汀根村', address:'番禺区沙头街汀根村创意路10号', type:'厂房/工业园', area:4500, rent:24, status:'待出租', contact:'高小姐', phone:'13100010023', lat:22.9550, lng:113.3270, createdAt:'2024-07-05' },
+            { id:36, name:'大平村新工业坊', village:'大平村', address:'番禺区沙头街大平工业二路9号', type:'厂房/工业园', area:5800, rent:27, status:'在建/装修', contact:'杨工', phone:'13000010024', lat:22.9310, lng:113.3518, createdAt:'2024-07-06' },
+            { id:37, name:'北海村休闲中心', village:'北海村', address:'番禺区沙头街北海休闲路3号', type:'综合楼宇', area:950, rent:22, status:'已出租', contact:'麦女士', phone:'13900010025', lat:22.9468, lng:113.3408, createdAt:'2024-07-07' },
+            { id:38, name:'沙头街仓储物流园', village:'沙头街', address:'番禺区沙头街物流大道8号', type:'仓库', area:6500, rent:19, status:'待出租', contact:'关经理', phone:'13800010026', lat:22.9418, lng:113.3345, createdAt:'2024-07-08' },
+            { id:39, name:'莲湖村标准厂房', village:'莲湖村', address:'番禺区沙头街莲湖工业路11号', type:'厂房/工业园', area:7800, rent:23, status:'部分可租', contact:'徐生', phone:'13700010027', lat:22.9530, lng:113.3258, createdAt:'2024-07-09' },
+            { id:40, name:'骏兴社区科创空间', village:'骏兴社区', address:'番禺区沙头街骏兴科技路7号', type:'办公楼', area:2100, rent:48, status:'待出租', contact:'邓小姐', phone:'13600010028', lat:22.9455, lng:113.3448, createdAt:'2024-07-10' },
+            { id:41, name:'大富村综合大楼', village:'大富村', address:'番禺区沙头街大富中心路22号', type:'商业综合体', area:3800, rent:52, status:'已出租', contact:'谢先生', phone:'13500010029', lat:22.9518, lng:113.3305, createdAt:'2024-07-11' },
+            { id:42, name:'小罗村仓储中心', village:'小罗村', address:'番禺区沙头街小罗仓储路3号', type:'仓库', area:3200, rent:16, status:'待出租', contact:'沈女士', phone:'13400010030', lat:22.9375, lng:113.3585, createdAt:'2024-07-12' },
+            { id:43, name:'南双玉村商业街', village:'南双玉村', address:'番禺区沙头街南双玉商业街2号', type:'商铺', area:1100, rent:62, status:'待出租', contact:'谭先生', phone:'13300010031', lat:22.9590, lng:113.3180, createdAt:'2024-07-13' },
+            { id:44, name:'榄山村珠宝工坊', village:'榄山村', address:'番禺区沙头街榄山珠宝路5号', type:'厂房/工业园', area:4200, rent:33, status:'部分可租', contact:'潘经理', phone:'13200010032', lat:22.9475, lng:113.3388, createdAt:'2024-07-14' },
+            { id:45, name:'小平村便民市场', village:'小平村', address:'番禺区沙头街小平市场路1号', type:'商铺', area:600, rent:68, status:'待出租', contact:'曹女士', phone:'13100010033', lat:22.9358, lng:113.3550, createdAt:'2024-07-15' },
+            { id:46, name:'横江村生态厂房', village:'横江村', address:'番禺区沙头街横江生态路6号', type:'厂房/工业园', area:5100, rent:29, status:'在建/装修', contact:'彭生', phone:'13000010034', lat:22.9505, lng:113.3320, createdAt:'2024-08-01' },
+            { id:47, name:'汀根村文体中心', village:'汀根村', address:'番禺区沙头街汀根文体路9号', type:'综合楼宇', area:1700, rent:25, status:'已出租', contact:'简小姐', phone:'13900010035', lat:22.9558, lng:113.3278, createdAt:'2024-08-02' },
+            { id:48, name:'大平村电商基地', village:'大平村', address:'番禺区沙头街大平电商路15号', type:'办公楼', area:1900, rent:36, status:'待出租', contact:'廖经理', phone:'13800010036', lat:22.9305, lng:113.3528, createdAt:'2024-08-03' },
+            { id:49, name:'北海村青年创业园', village:'北海村', address:'番禺区沙头街北海创业路2号', type:'办公楼', area:1300, rent:42, status:'待出租', contact:'钟先生', phone:'13700010037', lat:22.9462, lng:113.3402, createdAt:'2024-08-04' },
+            { id:50, name:'沙头街新能源厂房', village:'沙头街', address:'番禺区沙头街新能源路1号', type:'厂房/工业园', area:8800, rent:31, status:'待出租', contact:'陆工', phone:'13600010038', lat:22.9412, lng:113.3365, createdAt:'2024-08-05' },
+            { id:51, name:'莲湖村仓储配送中心', village:'莲湖村', address:'番禺区沙头街莲湖仓储路4号', type:'仓库', area:4700, rent:17, status:'待出租', contact:'程经理', phone:'13500010039', lat:22.9538, lng:113.3260, createdAt:'2024-08-06' },
+            { id:52, name:'骏兴社区文体综合楼', village:'骏兴社区', address:'番禺区沙头街骏兴文体路12号', type:'综合楼宇', area:1600, rent:30, status:'部分可租', contact:'丁女士', phone:'13400010040', lat:22.9452, lng:113.3450, createdAt:'2024-08-07' },
+            { id:53, name:'大富村五金市场', village:'大富村', address:'番禺区沙头街大富五金路8号', type:'商铺', area:1800, rent:46, status:'待出租', contact:'郭生', phone:'13300010041', lat:22.9522, lng:113.3295, createdAt:'2024-08-08' },
+            { id:54, name:'小罗村创新工厂', village:'小罗村', address:'番禺区沙头街小罗创新路11号', type:'厂房/工业园', area:3300, rent:26, status:'已出租', contact:'赖先生', phone:'13200010042', lat:22.9370, lng:113.3595, createdAt:'2024-08-09' },
+            { id:55, name:'南双玉村休闲商业街', village:'南双玉村', address:'番禺区沙头街南双玉休闲路7号', type:'商业综合体', area:2500, rent:55, status:'待出租', contact:'马经理', phone:'13100010043', lat:22.9585, lng:113.3188, createdAt:'2024-08-10' },
+            { id:56, name:'榄山村汽车服务中心', village:'榄山村', address:'番禺区沙头街榄山汽车路3号', type:'其他', area:1200, rent:38, status:'待出租', contact:'侯先生', phone:'13000010044', lat:22.9470, lng:113.3392, createdAt:'2024-09-01' },
+            { id:57, name:'小平村人才公寓', village:'小平村', address:'番禺区沙头街小平公寓路6号', type:'综合楼宇', area:2600, rent:44, status:'部分可租', contact:'易女士', phone:'13900010045', lat:22.9362, lng:113.3548, createdAt:'2024-09-02' },
+            { id:58, name:'横江村新材料研发楼', village:'横江村', address:'番禺区沙头街横江研发路2号', type:'办公楼', area:2300, rent:39, status:'在建/装修', contact:'任先生', phone:'13800010046', lat:22.9502, lng:113.3322, createdAt:'2024-09-03' },
+            { id:59, name:'汀根村冷链仓库', village:'汀根村', address:'番禺区沙头街汀根冷链路5号', type:'仓库', area:4000, rent:21, status:'待出租', contact:'龙经理', phone:'13700010047', lat:22.9552, lng:113.3282, createdAt:'2024-09-04' },
+            { id:60, name:'大平村智能制造园', village:'大平村', address:'番禺区沙头街大平智能路10号', type:'厂房/工业园', area:6200, rent:34, status:'已出租', contact:'苏工', phone:'13600010048', lat:22.9302, lng:113.3522, createdAt:'2024-09-05' },
+            { id:61, name:'北海村商业中心', village:'北海村', address:'番禺区沙头街北海商业大道1号', type:'商业综合体', area:4200, rent:58, status:'待出租', contact:'范小姐', phone:'13500010049', lat:22.9460, lng:113.3405, createdAt:'2024-09-06' },
+            { id:62, name:'沙头街企业总部基地', village:'沙头街', address:'番禺区沙头街总部路1号', type:'办公楼', area:3500, rent:52, status:'部分可租', contact:'韩先生', phone:'13400010050', lat:22.9422, lng:113.3355, createdAt:'2024-09-07' },
+            { id:63, name:'莲湖村生态农场', village:'莲湖村', address:'番禺区沙头街莲湖农场路9号', type:'其他', area:8000, rent:12, status:'待出租', contact:'冯场长', phone:'13300010051', lat:22.9542, lng:113.3262, createdAt:'2024-09-08' },
+            { id:64, name:'骏兴社区便利店集群', village:'骏兴社区', address:'番禺区沙头街骏兴便利街8号', type:'商铺', area:400, rent:85, status:'已出租', contact:'崔女士', phone:'13200010052', lat:22.9456, lng:113.3452, createdAt:'2024-09-09' },
+            { id:65, name:'大富村文体活动中心', village:'大富村', address:'番禺区沙头街大富文体路3号', type:'综合楼宇', area:1100, rent:28, status:'在建/装修', contact:'廖先生', phone:'13100010053', lat:22.9525, lng:113.3302, createdAt:'2024-09-10' }
+        ];
+        const DEFAULT_PLOTS = [];
+
+        let buildings = [], plots = [];
+        let map1 = null, map2 = null;
+        let markersLayer = null, allMarkers = {};
+        let plotLayers = {};
+        let drawnItemsGroup = null;
+        let drawControl = null;
+        let currentEditId = null, currentEditType = 'building', pendingPlotData = null;
+        let chartTypeInstance = null, chartVillageInstance = null;
+        let isViewOnly = false;
+        let activeDrawTool = null;
+        let tempDrawnLayer = null;
+
+        async function loadData() {
+    // 1. 读取建筑数据
+    const { data: savedB, error: errB } = await supabase
+        .from('buildings').select('*').order('created_at', { ascending: false });
+    if (errB) {
+        console.error('读取建筑数据失败', errB);
+        buildings = JSON.parse(JSON.stringify(DEFAULT_BUILDINGS));
+    } else if (savedB && savedB.length > 0) {
+        buildings = savedB;
+    } else {
+        buildings = JSON.parse(JSON.stringify(DEFAULT_BUILDINGS));
+        const { error: insertErr } = await supabase.from('buildings').insert(buildings);
+        if (insertErr) console.error('写入默认数据失败', insertErr);
+    }
+    buildings.forEach(b => { if (!b.createdAt) b.createdAt = '2024-01-01'; });
+
+    // 2. 读取地块数据
+    const { data: savedP, error: errP } = await supabase
+        .from('plots').select('*').order('created_at', { ascending: false });
+    if (errP) {
+        console.error('读取地块数据失败', errP);
+        plots = [];
+    } else if (savedP && savedP.length > 0) {
+        plots = savedP;
+    } else {
+        plots = [];
+    }
+    plots.forEach(p => { if (!p.createdAt) p.createdAt = '2024-01-01'; });
+
+    // 3. 启动实时订阅
+    startRealtimeSubscription();
+
+    // 4. 渲染界面
+    renderDashboard();
+}
+async function saveData() {
+    // 不再使用 localStorage，数据由各个独立函数保存到 Supabase
+}
+// ===== Supabase 数据操作函数 =====
+async function saveBuildingToDB(data) {
+    if (data.id) {
+        const { error } = await supabase
+            .from('buildings').update(data).eq('id', data.id);
+        if (error) showToast('更新建筑失败: ' + error.message);
+        return !error;
+    } else {
+        data.created_at = new Date().toISOString();
+        const { error } = await supabase.from('buildings').insert(data);
+        if (error) showToast('添加建筑失败: ' + error.message);
+        return !error;
+    }
+}
+
+async function deleteBuildingFromDB(id) {
+    const { error } = await supabase.from('buildings').delete().eq('id', id);
+    return !error;
+}
+
+async function savePlotToDB(data) {
+    if (data.id) {
+        const { error } = await supabase
+            .from('plots').update(data).eq('id', data.id);
+        return !error;
+    } else {
+        data.created_at = new Date().toISOString();
+        const { error } = await supabase.from('plots').insert(data);
+        return !error;
+    }
+}
+
+async function deletePlotFromDB(id) {
+    const { error } = await supabase.from('plots').delete().eq('id', id);
+    return !error;
+}
+        function getNextId(arr) { return arr.length > 0 ? Math.max(...arr.map(x => x.id)) + 1 : 1; }
+        function showToast(msg) {
+            const t = document.createElement('div'); t.className='toast'; t.textContent=msg;
+            document.getElementById('toastContainer').appendChild(t);
+            setTimeout(()=>{ t.style.opacity='0'; t.style.transition='0.3s'; setTimeout(()=>t.remove(),300); },2000);
+        }
+        function escHtml(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+        function getStats() {
+            const total = buildings.length;
+            const totalArea = buildings.reduce((s,b)=>s+(parseFloat(b.area)||0),0);
+            const availableArea = buildings.filter(b=>b.status==='待出租'||b.status==='部分可租').reduce((s,b)=>s+((b.status==='部分可租'?0.5:1)*(parseFloat(b.area)||0)),0);
+            const availableCount = buildings.filter(b=>b.status==='待出租'||b.status==='部分可租').length;
+            const rentedCount = buildings.filter(b=>b.status==='已出租').length;
+            const constructionCount = buildings.filter(b=>b.status==='在建/装修').length;
+            const avgRent = buildings.filter(b=>parseFloat(b.rent)>0).reduce((s,b,_,arr)=>s+parseFloat(b.rent)/arr.length,0);
+            return { total, totalArea, availableArea, availableCount, rentedCount, constructionCount, avgRent };
+        }
+        function getTypeStats() {
+            const map = {};
+            buildings.forEach(b=>{ const t=b.type||'其他'; map[t]=map[t]||{count:0,area:0}; map[t].count++; map[t].area+=(parseFloat(b.area)||0); });
+            return map;
+        }
+        function getVillageStats() {
+            const map = {};
+            buildings.forEach(b=>{ const v=b.village||'未分类'; map[v]=(map[v]||0)+1; });
+            return map;
+        }
+        function renderDashboard() {
+            const stats = getStats();
+            document.getElementById('statsGrid').innerHTML = `
+            <div class="stat-card"><div class="stat-accent"></div><div class="stat-icon icon-blue">🏢</div><div class="stat-value">${stats.total}</div><div class="stat-label">物业总数</div></div>
+            <div class="stat-card"><div class="stat-accent"></div><div class="stat-icon icon-orange">📐</div><div class="stat-value">${(stats.totalArea/10000).toFixed(2)}万</div><div class="stat-label">总建筑面积(㎡)</div></div>
+            <div class="stat-card"><div class="stat-accent"></div><div class="stat-icon icon-green">✅</div><div class="stat-value">${(stats.availableArea/10000).toFixed(2)}万</div><div class="stat-label">可出租面积(㎡)</div></div>
+            <div class="stat-card"><div class="stat-accent"></div><div class="stat-icon icon-purple">📋</div><div class="stat-value">${stats.rentedCount}</div><div class="stat-label">已出租</div></div>
+            <div class="stat-card"><div class="stat-accent"></div><div class="stat-icon icon-teal">💰</div><div class="stat-value">${stats.avgRent ? stats.avgRent.toFixed(0) : '—'}</div><div class="stat-label">平均租金(元/㎡/月)</div></div>`;
+            const typeStats = getTypeStats();
+            if (chartTypeInstance) chartTypeInstance.destroy();
+            chartTypeInstance = new Chart(document.getElementById('chartType'), {
+                type:'doughnut', data:{ labels:Object.keys(typeStats), datasets:[{ data:Object.values(typeStats).map(t=>t.area), backgroundColor:['#f39c12','#2980b9','#27ae60','#8e44ad','#e74c3c','#1abc9c','#95a5a6'] }] },
+                options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{ usePointStyle:true } } } }
+            });
+            const villageStats = getVillageStats();
+            if (chartVillageInstance) chartVillageInstance.destroy();
+            chartVillageInstance = new Chart(document.getElementById('chartVillage'), {
+                type:'bar', data:{ labels:VILLAGES_ORDER, datasets:[{ label:'物业数量', data:VILLAGES_ORDER.map(v=>villageStats[v]||0), backgroundColor:'rgba(41,128,185,0.75)', borderRadius:6 }] },
+                options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ stepSize:1 } } } }
+            });
+            const sorted = [...buildings].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+            document.getElementById('tableBody').innerHTML = sorted.map((b,i) => `
+            <tr data-id="${b.id}" style="cursor:pointer" onclick="locateBuildingOnMap(${b.id})">
+              <td>${i+1}</td><td><strong>${escHtml(b.name)}</strong></td><td>${escHtml(b.village)}</td><td>${escHtml(b.address)}</td>
+              <td>${escHtml(b.type)}</td><td>${(parseFloat(b.area)||0).toLocaleString()}</td><td>${parseFloat(b.rent)>0?b.rent+'元':'—'}</td>
+              <td><span class="badge ${b.status==='待出租'?'badge-available':b.status==='已出租'?'badge-rented':b.status==='部分可租'?'badge-partial':'badge-construction'}">${b.status}</span></td>
+              <td>${escHtml(b.contact||'—')}</td>
+              <td><button class="btn-sm view" onclick="event.stopPropagation();viewBuilding(${b.id})" title="查看详情">👁️ 查看</button></td>
+            </tr>`).join('');
+            document.getElementById('buildingCount').textContent = buildings.length;
+        }
+
+        function setupTiandituLayers(map) {
+            if (!TIANDITU_KEY) return null;
+            const vec = L.tileLayer(`http://t{s}.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${TIANDITU_KEY}`, { subdomains:['0','1','2','3','4','5','6','7'], maxZoom:18, attribution:'天地图矢量' });
+            const cva = L.tileLayer(`http://t{s}.tianditu.gov.cn/cva_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${TIANDITU_KEY}`, { subdomains:['0','1','2','3','4','5','6','7'], maxZoom:18 });
+            const img = L.tileLayer(`http://t{s}.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${TIANDITU_KEY}`, { subdomains:['0','1','2','3','4','5','6','7'], maxZoom:18, attribution:'天地图影像' });
+            const cia = L.tileLayer(`http://t{s}.tianditu.gov.cn/cia_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${TIANDITU_KEY}`, { subdomains:['0','1','2','3','4','5','6','7'], maxZoom:18 });
+            const vecGroup = L.layerGroup([vec, cva]);
+            const imgGroup = L.layerGroup([img, cia]);
+            vecGroup.addTo(map);
+            const switchControl = L.control({ position:'topright' });
+            switchControl.onAdd = function() {
+                const div = L.DomUtil.create('div','map-layer-switch');
+                L.DomEvent.disableClickPropagation(div);
+                const btnVec = L.DomUtil.create('button','',div); btnVec.innerHTML='🗺️ 矢量'; btnVec.classList.add('active');
+                const btnImg = L.DomUtil.create('button','',div); btnImg.innerHTML='🛰️ 影像';
+                L.DomEvent.on(btnVec,'click', ()=>{ map.removeLayer(imgGroup); map.addLayer(vecGroup); btnVec.classList.add('active'); btnImg.classList.remove('active'); });
+                L.DomEvent.on(btnImg,'click', ()=>{ map.removeLayer(vecGroup); map.addLayer(imgGroup); btnImg.classList.add('active'); btnVec.classList.remove('active'); });
+                return div;
+            };
+            switchControl.addTo(map);
+            return { vecGroup, imgGroup };
+        }
+
+        function initMap1() {
+            if (map1) return;
+            map1 = L.map('map', { center:[22.942,113.347], zoom:14 });
+            if (TIANDITU_KEY) { setupTiandituLayers(map1); document.getElementById('keyNoticeMap').style.display='none'; }
+            else { L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map1); document.getElementById('keyNoticeMap').style.display='flex'; }
+            markersLayer = L.layerGroup().addTo(map1);
+            refreshBuildingMarkers();
+            map1.on('click', function(e) {
+                if (!document.querySelector('.leaflet-popup') && confirm('是否在此位置新增一个建筑物？\n\n点击"确定"将打开新增表单。')) {
+                    openBuildingModal(null, e.latlng.lat, e.latlng.lng);
+                }
+            });
+        }
+        function refreshBuildingMarkers() {
+            if (!markersLayer) return;
+            markersLayer.clearLayers(); allMarkers={};
+            buildings.forEach(b=>{
+                const color = {'待出租':'#f39c12','已出租':'#27ae60','部分可租':'#2980b9','在建/装修':'#95a5a6'}[b.status]||'#f39c12';
+                const icon = L.divIcon({ className:'custom-marker', html:`<div style="width:24px;height:24px;background:${color};border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>`, iconSize:[30,30], iconAnchor:[15,15], popupAnchor:[0,-16] });
+                const marker = L.marker([b.lat,b.lng],{icon}).bindPopup(createBuildingPopup(b)).on('click',()=>highlightBuildingInList(b.id));
+                markersLayer.addLayer(marker); allMarkers[b.id]=marker;
+            });
+            document.getElementById('buildingCount').textContent = buildings.length;
+            filterBuildingList();
+        }
+        function createBuildingPopup(b) {
+            return `<div style="padding:10px;min-width:220px;"><h4>${escHtml(b.name)}</h4><p>📍 ${escHtml(b.address)}</p><p>📐 ${(parseFloat(b.area)||0).toLocaleString()}㎡ | 💰 ${parseFloat(b.rent)>0?b.rent+'元/㎡/月':'面议'}</p><p>状态：${b.status}</p><p style="text-align:right;"><button class="btn-sm view" onclick="editBuilding(${b.id})" style="font-size:11px;">✏️ 编辑</button></p></div>`;
+        }
+        function filterBuildingList() {
+            const q = document.getElementById('searchBuildingInput').value.toLowerCase();
+            const filtered = buildings.filter(b=>(b.name+b.address+b.village).toLowerCase().includes(q));
+            document.getElementById('buildingList').innerHTML = filtered.map(b=>{
+                const color = {'待出租':'#f39c12','已出租':'#27ae60','部分可租':'#2980b9','在建/装修':'#95a5a6'}[b.status]||'#f39c12';
+                return `<div class="building-item" data-id="${b.id}" onclick="flyToBuilding(${b.id})">
+                    <span class="type-dot" style="background:${color}"></span>
+                    <div class="item-info"><div class="item-name">${escHtml(b.name)}</div><div class="item-addr">${escHtml(b.address)}</div></div>
+                    <div class="item-area">${(parseFloat(b.area)||0).toLocaleString()}㎡</div>
+                    <span class="item-delete" onclick="event.stopPropagation();deleteBuildingById(${b.id})" title="删除建筑">🗑️</span>
+                </div>`;
+            }).join('') || '<div class="empty-state">无匹配建筑</div>';
+        }
+        function flyToBuilding(id) { const b = buildings.find(x=>x.id===id); if(b && map1){ map1.flyTo([b.lat,b.lng],17); allMarkers[id]?.openPopup(); highlightBuildingInList(id); } }
+        function highlightBuildingInList(id) {
+            document.querySelectorAll('#buildingList .building-item').forEach(el=>el.classList.remove('active'));
+            const el = document.querySelector(`#buildingList .building-item[data-id="${id}"]`);
+            if(el) el.classList.add('active');
+        }
+        function locateBuildingOnMap(id) { switchTab('tab-map'); setTimeout(()=>{ map1?.invalidateSize(); flyToBuilding(id); },400); }
+
+        function initMap2() {
+            if (map2) return;
+            map2 = L.map('map2', { center:[22.942,113.347], zoom:14 });
+            if (TIANDITU_KEY) { setupTiandituLayers(map2); document.getElementById('keyNoticePlot').style.display='none'; }
+            else { L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map2); document.getElementById('keyNoticePlot').style.display='flex'; }
+            drawnItemsGroup = new L.FeatureGroup();
+            map2.addLayer(drawnItemsGroup);
+            drawControl = new L.Control.Draw({
+                position: 'topleft',
+                draw: {
+                    polyline: false,
+                    circle: false,
+                    circlemarker: false,
+                    marker: false,
+                    polygon: {
+                        allowIntersection: false,
+                        showArea: true,
+                        shapeOptions: { color: '#e74c3c', weight: 2, fillOpacity: 0.25, fillColor: '#e74c3c', dashArray: '6, 8' }
+                    },
+                    rectangle: {
+                        shapeOptions: { color: '#e74c3c', weight: 2, fillOpacity: 0.25, fillColor: '#e74c3c', dashArray: '6, 8' }
+                    }
+                },
+                edit: { featureGroup: drawnItemsGroup, remove: true }
+            });
+            map2.addControl(drawControl);
+            map2.on(L.Draw.Event.CREATED, function(e) {
+                const layer = e.layer;
+                let coords = [];
+                let area = 0;
+                if (e.layerType === 'polygon' || e.layerType === 'rectangle') {
+                    const latlngs = layer.getLatLngs()[0];
+                    coords = latlngs.map(ll => [ll.lat, ll.lng]);
+                    try {
+                        const polygon = turf.polygon([coords.concat([[coords[0][0], coords[0][1]]])]);
+                        area = turf.area(polygon);
+                    } catch (err) { console.warn('Turf面积计算失败', err); }
+                }
+                tempDrawnLayer = layer;
+                drawnItemsGroup.addLayer(layer);
+                resetDrawToolButtons();
+                openPlotModalForNew(coords, area, layer);
+            });
+            map2.on(L.Draw.Event.DRAWSTART, function(e) {
+                if (tempDrawnLayer && drawnItemsGroup.hasLayer(tempDrawnLayer)) {
+                    drawnItemsGroup.removeLayer(tempDrawnLayer);
+                    tempDrawnLayer = null;
+                }
+            });
+            refreshPlotLayers();
+        }
+        function refreshPlotLayers() {
+            if (!map2) return;
+            Object.values(plotLayers).forEach(layer => { if (map2.hasLayer(layer)) map2.removeLayer(layer); });
+            plotLayers = {};
+            plots.forEach(p => {
+                if (!p.coordinates || p.coordinates.length < 3) return;
+                const statusColor = {'待出租':'#f39c12','已出租':'#27ae60','部分可租':'#2980b9','在建/装修':'#95a5a6'}[p.status] || '#f39c12';
+                const polygon = L.polygon(p.coordinates, { color: statusColor, weight: 3, fillOpacity: 0.25, fillColor: statusColor }).addTo(map2);
+                polygon._plotId = p.id;
+                polygon.bindPopup(createPlotPopup(p));
+                polygon.on('click', ()=>highlightPlotInList(p.id));
+                plotLayers[p.id] = polygon;
+            });
+            document.getElementById('plotCount').textContent = plots.length;
+            filterPlotList();
+        }
+        function createPlotPopup(p) {
+            return `<div style="padding:10px;min-width:200px;"><h4>${escHtml(p.name)}</h4><p>📍 ${escHtml(p.address)}</p><p>📐 ${(parseFloat(p.area)||0).toLocaleString()}㎡ | 💰 ${parseFloat(p.rent)>0?p.rent+'元/㎡/月':'面议'}</p><p>状态：${p.status}</p><p style="text-align:right;"><button class="btn-sm view" onclick="editPlot(${p.id})" style="font-size:11px;">✏️ 编辑</button></p></div>`;
+        }
+        function filterPlotList() {
+            const q = document.getElementById('searchPlotInput').value.toLowerCase();
+            const filtered = plots.filter(p=>(p.name+p.address).toLowerCase().includes(q));
+            document.getElementById('plotList').innerHTML = filtered.map(p=>`
+                <div class="plot-item" data-id="${p.id}" onclick="flyToPlot(${p.id})">
+                    <span class="type-dot" style="background:#1a5276"></span>
+                    <div class="item-info"><div class="item-name">${escHtml(p.name)}</div><div class="item-addr">${escHtml(p.address)}</div></div>
+                    <div class="item-area">${(parseFloat(p.area)||0).toLocaleString()}㎡</div>
+                    <span class="item-delete" onclick="event.stopPropagation();deletePlotById(${p.id})" title="删除地块">🗑️</span>
+                </div>`).join('') || '<div class="empty-state">暂无地块，请使用下方绘图工具在地图上绘制</div>';
+        }
+        function flyToPlot(id) { const p = plots.find(x=>x.id===id); if(p && map2 && p.coordinates) { map2.flyToBounds(p.coordinates); plotLayers[id]?.openPopup(); highlightPlotInList(id); } }
+        function highlightPlotInList(id) {
+            document.querySelectorAll('#plotList .plot-item').forEach(el=>el.classList.remove('active'));
+            document.querySelector(`#plotList .plot-item[data-id="${id}"]`)?.classList.add('active');
+        }
+        async function deletePlotById(id) {
+            if (!confirm('确定删除该地块？')) return;
+            if (plotLayers[id] && map2.hasLayer(plotLayers[id])) map2.removeLayer(plotLayers[id]);
+            plots = plots.filter(p=>p.id!==id);
+            await deletePlotFromDB(id);
+            refreshPlotLayers();
+            showToast('已删除地块');
+        }
+
+        function activateDrawPolygon() {
+            if (!map2) { switchTab('tab-plot'); return; }
+            clearTempDrawnLayer();
+            activeDrawTool = 'polygon';
+            updateDrawToolButtons();
+            try { new L.Draw.Polygon(map2, drawControl.options.draw.polygon).enable(); } catch(e) { showToast('绘图启动失败'); activeDrawTool=null; updateDrawToolButtons(); }
+        }
+        function activateDrawRectangle() {
+            if (!map2) { switchTab('tab-plot'); return; }
+            clearTempDrawnLayer();
+            activeDrawTool = 'rectangle';
+            updateDrawToolButtons();
+            try { new L.Draw.Rectangle(map2, drawControl.options.draw.rectangle).enable(); } catch(e) { showToast('绘图启动失败'); activeDrawTool=null; updateDrawToolButtons(); }
+        }
+        function cancelDrawing() { clearTempDrawnLayer(); activeDrawTool=null; updateDrawToolButtons(); map2?.fire('keydown', { keyCode:27 }); showToast('已取消绘制'); }
+        function clearTempDrawnLayer() {
+            if (tempDrawnLayer && drawnItemsGroup?.hasLayer(tempDrawnLayer)) drawnItemsGroup.removeLayer(tempDrawnLayer);
+            tempDrawnLayer = null;
+            pendingPlotData = null;
+        }
+        async function clearAllPlots() {
+    if (!confirm('确定清空所有地块？不可恢复！')) return;
+    Object.values(plotLayers).forEach(l=>{ if(map2?.hasLayer(l)) map2.removeLayer(l); });
+    plotLayers={}; drawnItemsGroup?.clearLayers(); tempDrawnLayer=null; pendingPlotData=null;
+    // 逐个从 Supabase 删除
+    for (const p of plots) {
+        await deletePlotFromDB(p.id);
+    }
+    plots=[]; 
+    refreshPlotLayers(); 
+    showToast('已清空所有地块');
+}
+        function updateDrawToolButtons() {
+            document.getElementById('btnDrawPolygon')?.classList.toggle('active-tool', activeDrawTool==='polygon');
+            document.getElementById('btnDrawRectangle')?.classList.toggle('active-tool', activeDrawTool==='rectangle');
+            document.getElementById('btnCancelDraw').style.display = activeDrawTool ? 'inline-flex' : 'none';
+        }
+        function resetDrawToolButtons() { activeDrawTool=null; updateDrawToolButtons(); }
+
+        function setFormDisabled(disabled) {
+            document.querySelectorAll('#modalBody input, #modalBody select, #modalBody textarea').forEach(el=> el.disabled = disabled);
+            document.getElementById('btnSave').style.display = disabled ? 'none' : 'inline-flex';
+            document.getElementById('btnDelete').style.display = disabled ? 'none' : (currentEditId ? 'inline-flex' : 'none');
+            document.getElementById('btnClose').textContent = disabled ? '关闭' : '取消';
+            isViewOnly = disabled;
+        }
+        function openBuildingModal(id, lat, lng, viewOnly) {
+            currentEditType = 'building'; currentEditId = id || null;
+            document.getElementById('editTypeFlag').value = 'building';
+            document.getElementById('modalTitle').textContent = viewOnly ? '查看建筑详情' : (id ? '编辑建筑物信息' : '新增建筑物信息');
+            const b = id ? buildings.find(x=>x.id===id) : null;
+            document.getElementById('editId').value = id || '';
+            document.getElementById('editName').value = b ? b.name : '';
+            document.getElementById('editAddress').value = b ? b.address : '';
+            document.getElementById('editArea').value = b ? b.area : '';
+            document.getElementById('editRent').value = b ? b.rent : '';
+            document.getElementById('editStatus').value = b ? b.status : '待出租';
+            document.getElementById('editContact').value = b ? b.contact : '';
+            document.getElementById('editPhone').value = b ? b.phone : '';
+            document.getElementById('editNote').value = b ? b.note : '';
+            document.getElementById('editLat').value = b ? b.lat : (lat ? lat.toFixed(6) : '');
+            document.getElementById('editLng').value = b ? b.lng : (lng ? lng.toFixed(6) : '');
+            document.getElementById('editVillage').value = b ? b.village : '';
+            document.getElementById('editType').value = b ? b.type : '厂房/工业园';
+            document.getElementById('coordFields').style.display = 'block';
+            document.getElementById('polygonAreaDisplay').style.display = 'none';
+            document.getElementById('btnDelete').style.display = id && !viewOnly ? 'inline-flex' : 'none';
+            setFormDisabled(!!viewOnly);
+            document.getElementById('modalOverlay').style.display = 'flex';
+        }
+        function viewBuilding(id) { openBuildingModal(id, null, null, true); }
+        function editBuilding(id) { openBuildingModal(id, null, null, false); }
+        function addNewBuilding() { const lat = 22.942 + (Math.random()-0.5)*0.01; const lng = 113.347 + (Math.random()-0.5)*0.02; openBuildingModal(null, lat, lng, false); }
+        async function deleteBuildingById(id) {
+            if (!confirm('确定删除该建筑？')) return;
+            buildings = buildings.filter(b=>b.id!==id);
+            await deleteBuildingFromDB(id);
+            refreshBuildingMarkers();
+            renderDashboard();
+            showToast('已删除');
+        }
+        function openPlotModalForNew(coords, area, layer) {
+            currentEditType = 'plot'; currentEditId = null;
+            document.getElementById('editTypeFlag').value = 'plot';
+            document.getElementById('modalTitle').textContent = '新增地块 - 请填写地块信息';
+            document.getElementById('editId').value = '';
+            document.getElementById('editName').value = '';
+            document.getElementById('editAddress').value = '';
+            document.getElementById('editArea').value = area > 0 ? area.toFixed(2) : '0';
+            document.getElementById('editRent').value = '0';
+            document.getElementById('editStatus').value = '待出租';
+            document.getElementById('editContact').value = '';
+            document.getElementById('editPhone').value = '';
+            document.getElementById('editNote').value = '';
+            document.getElementById('editVillage').value = '';
+            document.getElementById('editType').value = '地块';
+            document.getElementById('coordFields').style.display = 'none';
+            document.getElementById('polygonAreaDisplay').style.display = 'block';
+            document.getElementById('polygonAreaDisplay').textContent = area > 0 ? `📐 系统计算面积：${area.toFixed(2)} ㎡（约 ${(area/666.67).toFixed(2)} 亩）` : '📐 面积计算中...';
+            document.getElementById('btnDelete').style.display = 'none';
+            setFormDisabled(false);
+            document.getElementById('modalOverlay').style.display = 'flex';
+            pendingPlotData = { coords, area, layer };
+        }
+        function editPlot(id) {
+            const p = plots.find(x=>x.id===id); if (!p) return;
+            currentEditType = 'plot'; currentEditId = id; pendingPlotData = null;
+            document.getElementById('editTypeFlag').value = 'plot';
+            document.getElementById('modalTitle').textContent = '编辑地块信息';
+            document.getElementById('editId').value = p.id;
+            document.getElementById('editName').value = p.name || '';
+            document.getElementById('editAddress').value = p.address || '';
+            document.getElementById('editArea').value = p.area || 0;
+            document.getElementById('editRent').value = p.rent || 0;
+            document.getElementById('editStatus').value = p.status || '待出租';
+            document.getElementById('editContact').value = p.contact || '';
+            document.getElementById('editPhone').value = p.phone || '';
+            document.getElementById('editNote').value = p.note || '';
+            document.getElementById('editVillage').value = p.village || '';
+            document.getElementById('editType').value = p.type || '地块';
+            document.getElementById('coordFields').style.display = 'none';
+            document.getElementById('polygonAreaDisplay').style.display = 'block';
+            document.getElementById('polygonAreaDisplay').textContent = p.coordinates ? `📍 坐标点数：${p.coordinates.length} | 面积：${(parseFloat(p.area)||0).toLocaleString()} ㎡` : '⚠️ 无坐标数据';
+            document.getElementById('btnDelete').style.display = 'inline-flex';
+            setFormDisabled(false);
+            document.getElementById('modalOverlay').style.display = 'flex';
+        }
+        function closeModal() {
+            document.getElementById('modalOverlay').style.display = 'none';
+            if (pendingPlotData?.layer && drawnItemsGroup?.hasLayer(pendingPlotData.layer)) drawnItemsGroup.removeLayer(pendingPlotData.layer);
+            if (tempDrawnLayer && drawnItemsGroup?.hasLayer(tempDrawnLayer)) drawnItemsGroup.removeLayer(tempDrawnLayer);
+            tempDrawnLayer = null; pendingPlotData = null; currentEditId = null; resetDrawToolButtons();
+        }
+        async function saveItem() {
+            const typeFlag = document.getElementById('editTypeFlag').value;
+            const idVal = document.getElementById('editId').value;
+            const id = idVal ? parseInt(idVal) : null;
+            const data = {
+                id: id || (typeFlag==='building' ? getNextId(buildings) : getNextId(plots)),
+                name: document.getElementById('editName').value.trim(),
+                village: document.getElementById('editVillage').value,
+                type: document.getElementById('editType').value,
+                address: document.getElementById('editAddress').value.trim(),
+                area: parseFloat(document.getElementById('editArea').value)||0,
+                rent: parseFloat(document.getElementById('editRent').value)||0,
+                status: document.getElementById('editStatus').value,
+                contact: document.getElementById('editContact').value.trim(),
+                phone: document.getElementById('editPhone').value.trim(),
+                note: document.getElementById('editNote').value.trim()
+            };
+            if (typeFlag === 'building') {
+                const lat = parseFloat(document.getElementById('editLat').value);
+                const lng = parseFloat(document.getElementById('editLng').value);
+                if (!data.name || !data.village || !data.type || !data.address || isNaN(data.area) || isNaN(data.rent) || !data.status || !data.contact || !data.phone) {
+                    showToast('⚠️ 所有必填项不能为空（租金、联系人、联系电话为必填）'); return;
+                }
+                if (isNaN(lat)||isNaN(lng)) { showToast('⚠️ 经纬度无效'); return; }
+                data.lat = lat; data.lng = lng;
+                if (!id) data.createdAt = new Date().toISOString();
+                if (id) { const idx = buildings.findIndex(b=>b.id===data.id); if(idx>=0){ data.createdAt = buildings[idx].createdAt; buildings[idx]=data; } }
+else buildings.push(data);
+await saveBuildingToDB(data);
+refreshBuildingMarkers();
+renderDashboard();
+            } else {
+                if (!data.name || !data.address) { showToast('⚠️ 名称和地址不能为空'); return; }
+                if (!id && pendingPlotData?.coords) data.coordinates = pendingPlotData.coords;
+                else if (id) { const p = plots.find(x=>x.id===data.id); data.coordinates = p?.coordinates || []; }
+                else { showToast('⚠️ 缺少坐标数据'); return; }
+                if (id) { const idx = plots.findIndex(p=>p.id===data.id); plots[idx]=data; }
+                else if (!id) {
+                data.createdAt = new Date().toISOString();
+                plots.push(data);
+                }
+                await savePlotToDB(data);
+                if (pendingPlotData?.layer && drawnItemsGroup?.hasLayer(pendingPlotData.layer)) drawnItemsGroup.removeLayer(pendingPlotData.layer);
+                if (tempDrawnLayer && drawnItemsGroup?.hasLayer(tempDrawnLayer)) drawnItemsGroup.removeLayer(tempDrawnLayer);
+                tempDrawnLayer = null; pendingPlotData = null;
+                refreshPlotLayers();
+            }
+            closeModal(); showToast('✅ 保存成功');
+        }
+        function deleteCurrentItem() { const typeFlag=document.getElementById('editTypeFlag').value; const id=parseInt(document.getElementById('editId').value); if(typeFlag==='building') deleteBuildingById(id); else deletePlotById(id); closeModal(); }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+            document.querySelector(`[data-tab="${tabId}"]`)?.classList.add('active');
+            document.getElementById(tabId)?.classList.add('active');
+            if(tabId==='tab-map'){ if(!map1) initMap1(); else setTimeout(()=>map1.invalidateSize(),300); }
+            if(tabId==='tab-plot'){ if(!map2) initMap2(); else setTimeout(()=>{ map2.invalidateSize(); refreshPlotLayers(); },300); }
+            if(tabId==='tab-dashboard') renderDashboard();
+        }
+// ===== 实时订阅：当其他人修改数据时，自动刷新你的屏幕 =====
+function startRealtimeSubscription() {
+    // 订阅建筑数据变化
+    const buildingChannel = supabase
+        .channel('buildings-room')
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'buildings' },
+            async payload => {
+                console.log('收到建筑实时变更:', payload);
+                const { data } = await supabase
+                    .from('buildings').select('*').order('created_at', { ascending: false });
+                if (data) {
+                    buildings = data;
+                    renderDashboard();
+                    refreshBuildingMarkers();
+                }
+            })
+        .subscribe();
+
+    // 订阅地块数据变化
+    const plotChannel = supabase
+        .channel('plots-room')
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'plots' },
+            async payload => {
+                console.log('收到地块实时变更:', payload);
+                const { data } = await supabase
+                    .from('plots').select('*').order('created_at', { ascending: false });
+                if (data) {
+                    plots = data;
+                    refreshPlotLayers();
+                }
+            })
+        .subscribe();
+
+    console.log('实时订阅已启动');
+}
+        async function init() {
+            await loadData();
+            document.getElementById('editVillage').innerHTML = VILLAGES_ORDER.map(v=>`<option value="${v}">${v}</option>`).join('');
+            renderDashboard();
+            initMap1();
+            document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click', function(){ switchTab(this.dataset.tab); }));
+            document.getElementById('modalOverlay').addEventListener('click', function(e){ if(e.target===this) closeModal(); });
+            window.addEventListener('resize', ()=>{ map1?.invalidateSize(); map2?.invalidateSize(); });
+            document.addEventListener('keydown', function(e){ if(e.key==='Escape' && document.getElementById('modalOverlay').style.display==='flex') closeModal(); });
+        }
+
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+
+        window.locateBuildingOnMap = locateBuildingOnMap;
+        window.viewBuilding = viewBuilding;
+        window.editBuilding = editBuilding;
+        window.addNewBuilding = addNewBuilding;
+        window.deleteBuildingById = deleteBuildingById;
+        window.flyToBuilding = flyToBuilding;
+        window.editPlot = editPlot;
+        window.flyToPlot = flyToPlot;
+        window.deletePlotById = deletePlotById;
+        window.switchTab = switchTab;
+        window.closeModal = closeModal;
+        window.saveItem = saveItem;
+        window.deleteCurrentItem = deleteCurrentItem;
+        window.activateDrawPolygon = activateDrawPolygon;
+        window.activateDrawRectangle = activateDrawRectangle;
+        window.cancelDrawing = cancelDrawing;
+        window.clearAllPlots = clearAllPlots;
+        window.filterBuildingList = filterBuildingList;
+        window.filterPlotList = filterPlotList;
+        window.locatePlotOnMap = flyToPlot;
+    })();
+</script>
+</body>
+</html>
